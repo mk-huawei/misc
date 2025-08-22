@@ -1,4 +1,4 @@
-// Source: https://godbolt.org/z/qnTdozoo6, https://schedule.cppnow.org/wp-content/uploads/2025/03/CNow-Advanced-Ranges.pdf
+// Source: https://godbolt.org/z/nTxh83ad9, https://godbolt.org/z/qnTdozoo6, https://schedule.cppnow.org/wp-content/uploads/2025/03/CNow-Advanced-Ranges.pdf
 
 #include <ranges>
 #include <vector>
@@ -11,7 +11,7 @@ template <std::ranges::view InputView>
 class stock_threshold_view : public std::ranges::view_interface<stock_threshold_view<InputView>> {
 private:
     InputView base_;
-    std::unordered_map<std::string, double> const& stock_data_;
+    std::unordered_map<std::string, double> stock_data_;
     double threshold_;
 
     // Iterator class that handles filtering
@@ -30,7 +30,7 @@ private:
 
         // Constructor
         iterator(base_iterator current, base_iterator end, 
-                 std::unordered_map<std::string, double> const* stock_data, 
+                 const std::unordered_map<std::string, double>* stock_data, 
                  double threshold)
             : current_(current), end_(end), 
               stock_data_(stock_data), threshold_(threshold) {
@@ -63,7 +63,7 @@ private:
     private:
         base_iterator current_{};
         base_iterator end_{};
-        std::unordered_map<std::string, double> const* stock_data_{};
+        const std::unordered_map<std::string, double>* stock_data_{};
         double threshold_{};
 
         // Helper method to find the next valid element
@@ -81,9 +81,9 @@ private:
 public:
     // Constructor
     stock_threshold_view(InputView base, 
-                         std::unordered_map<std::string, double> const& stock_data, 
+                         std::unordered_map<std::string, double> stock_data, 
                          double threshold)
-        : base_(std::move(base)), stock_data_(stock_data), threshold_(threshold) {}
+        : base_(std::move(base)), stock_data_(std::move(stock_data)), threshold_(threshold) {}
 
     // Begin iterator
     auto begin() {
@@ -101,20 +101,20 @@ public:
 // Deduction guide
 template <class R>
 stock_threshold_view(R&&, 
-                    const std::unordered_map<std::string, double>&, 
+                    std::unordered_map<std::string, double>, 
                     double) 
     -> stock_threshold_view<std::views::all_t<R>>;
 
 namespace views {
     // This adaptor closure holds the external state and inherits from range_adaptor_closure
     struct stock_threshold_closure : public std::ranges::range_adaptor_closure<stock_threshold_closure> {
-        std::unordered_map<std::string, double> const& stock_data;
+        std::unordered_map<std::string, double> stock_data;
         double threshold;
         
         constexpr stock_threshold_closure(
-            std::unordered_map<std::string, double> const& data, 
+            std::unordered_map<std::string, double> data, 
             double t) 
-            : stock_data(data), threshold(t) {}
+            : stock_data(std::move(data)), threshold(t) {}
         
         // The call operator creates the view
         template <std::ranges::viewable_range R>
@@ -125,9 +125,9 @@ namespace views {
     
     // The factory function
     inline constexpr auto stock_threshold(
-        std::unordered_map<std::string, double> const& stock_data, 
+        std::unordered_map<std::string, double> stock_data, 
         double threshold) {
-        return stock_threshold_closure(stock_data, threshold);
+        return stock_threshold_closure(std::move(stock_data), threshold);
     }
 }
 
@@ -164,6 +164,17 @@ int main() {
         std::cout << stock << ", "; // NVDA, PEP, APP
     }
     std::cout << std::endl;
+    
+    auto complex_pipeline = stocks | views::stock_threshold(stock_data, threshold);
 
+    for (const auto& elem : complex_pipeline | std::views::take(2)) {
+        std::cout << elem << ", "; // NVDA, PEP
+    }
+    std::cout << std::endl;
+
+    auto full_complex_pipeline = stocks | views::stock_threshold(stock_data, threshold) | std::views::take(2);
+    for (const auto& elem : full_complex_pipeline) {
+        std::cout << elem << ", "; // NVDA, PEP
+    }
     return 0;
 }

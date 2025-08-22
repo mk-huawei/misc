@@ -1,4 +1,4 @@
-// Source: https://godbolt.org/z/r9P93crrs, https://godbolt.org/z/bnbnq8rWs, https://godbolt.org/z/1je7nfn8c, https://schedule.cppnow.org/wp-content/uploads/2025/03/CNow-Advanced-Ranges.pdf
+// Source: https://godbolt.org/z/avf49xafP, https://godbolt.org/z/r9P93crrs, https://godbolt.org/z/bnbnq8rWs, https://godbolt.org/z/1je7nfn8c, https://schedule.cppnow.org/wp-content/uploads/2025/03/CNow-Advanced-Ranges.pdf
 
 #include <ranges>
 #include <vector>
@@ -38,6 +38,12 @@ class skip_n_view : public std::ranges::view_interface<skip_n_view<InputView>> {
                     return *this;
                 }
 
+                iterator operator++(int) {
+                    auto tmp = *this;
+                    ++(*this);
+                    return tmp;
+                }
+
                 bool operator==(const iterator& rhs) const {
                     return current_position_ == rhs.current_position_;
                 }
@@ -69,42 +75,36 @@ template <typename R>
 skip_n_view(R&&, std::size_t) -> skip_n_view<std::views::all_t<R>>;
 
 namespace views {
-    struct skip_n_fn {
+    // Range adaptor closure - inherits from std::ranges::range_adaptor_closure
+    struct skip_n_closure : std::ranges::range_adaptor_closure<skip_n_closure> {
         std::size_t n;
-
-        constexpr explicit skip_n_fn(std::size_t n) : n(n) {}
+        
+        constexpr skip_n_closure(std::size_t n_val) : n(n_val) {}
+        
         template <std::ranges::viewable_range R>
         constexpr auto operator()(R&& r) const {
-            return skip_n_view{std::views::all(std::forward<R>(r)), n};
+            return skip_n_view{std::forward<R>(r), n};
         }
     };
 
-    template <std::ranges::viewable_range R>
-    constexpr auto operator|(R&& r, const skip_n_fn& fn) {
-        return fn(std::forward<R>(r));
-    }
+    // Range adaptor object
+    struct skip_n_t {
+        constexpr skip_n_closure operator()(std::size_t n) const {
+            return skip_n_closure(n);
+        }
+    };
 
-    constexpr auto skip_n(std::size_t n) {
-        return skip_n_fn{n};
-    }
+    // The actual object instance
+    inline constexpr skip_n_t skip_n{};
 }
 
 int main() {
     std::vector<int> data {1, 4, 2, 8, 9, 11, 12, 14, 18};
-    std::size_t n = 3;
-    skip_n_view test{std::views::all(data), n};
-
-    for (auto elem : test) {
-        std::cout << elem << " "; // 1 4 8 9 12 14
-    }
-    std::cout << std::endl;
-    auto pipeline = data | views::skip_n(3);
+    
+    auto pipeline = data | views::skip_n(3) | std::views::take(3);
     for (auto elem : pipeline) {
-        std::cout << elem << " "; // 1 4 8 9 12 14
+        std::cout << elem << " "; // 1 4 8
     }
-    std::cout << std::endl;
-    for (auto elem : pipeline) {
-        std::cout << elem << " "; // 1 4 8 9 12 14
-    }
+    
     return 0;
 }
